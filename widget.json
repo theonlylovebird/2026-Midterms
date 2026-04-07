@@ -1,0 +1,6 @@
+{
+  "name": "2026 Midterms",
+  "description": "Tracks live 2026 US midterm election odds from Polymarket and Kalshi side by side. Shows House, Senate, and Texas Senate races with color-coded Democratic (blue) and Republican (red) leads. Refreshes every 5 minutes.",
+  "author": "theonlylovebird",
+  "screenshot": "screenshot.png"
+}
