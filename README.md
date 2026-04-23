@@ -8,7 +8,10 @@ A macOS desktop widget that tracks live 2026 US midterm election odds from two p
 
 - **House winner** — which party wins the House
 - **Senate winner** — which party wins the Senate
-- **Texas Senate** — the most competitive Republican-held seat
+- **Texas Senate**
+- **Ohio Senate**
+- **Alaska Senate**
+- **North Carolina Senate**
 
 Each race shows odds from both **Polymarket** and **Kalshi**, so you can spot when the two markets diverge.
 
