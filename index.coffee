@@ -1,24 +1,37 @@
 command: """
 /usr/bin/curl -s 'https://api.elections.kalshi.com/trade-api/v2/markets/CONTROLH-2026-D' | /usr/bin/python3 -c "import sys,json; m=json.load(sys.stdin).get('market',{}); print('CONTROLH='+str(m.get('yes_bid_dollars','0')))"
 /usr/bin/curl -s 'https://api.elections.kalshi.com/trade-api/v2/markets/CONTROLS-2026-D' | /usr/bin/python3 -c "import sys,json; m=json.load(sys.stdin).get('market',{}); print('CONTROLS='+str(m.get('yes_bid_dollars','0')))"
+/usr/bin/curl -s 'https://api.elections.kalshi.com/trade-api/v2/markets/SENATEAK-26-D' | /usr/bin/python3 -c "import sys,json; m=json.load(sys.stdin).get('market',{}); print('SENATEAK='+str(m.get('yes_bid_dollars','0')))"
+/usr/bin/curl -s 'https://api.elections.kalshi.com/trade-api/v2/markets/SENATEME-26-D' | /usr/bin/python3 -c "import sys,json; m=json.load(sys.stdin).get('market',{}); print('SENATEME='+str(m.get('yes_bid_dollars','0')))"
+/usr/bin/curl -s 'https://api.elections.kalshi.com/trade-api/v2/markets/SENATENC-26-D' | /usr/bin/python3 -c "import sys,json; m=json.load(sys.stdin).get('market',{}); print('SENATENC='+str(m.get('yes_bid_dollars','0')))"
+/usr/bin/curl -s 'https://api.elections.kalshi.com/trade-api/v2/markets/SENATEOHS-26-D' | /usr/bin/python3 -c "import sys,json; m=json.load(sys.stdin).get('market',{}); print('SENATEOHS='+str(m.get('yes_bid_dollars','0')))"
 /usr/bin/curl -s 'https://api.elections.kalshi.com/trade-api/v2/markets/SENATETX-26-D' | /usr/bin/python3 -c "import sys,json; m=json.load(sys.stdin).get('market',{}); print('SENATETX='+str(m.get('yes_bid_dollars','0')))"
 """
 
 refreshFrequency: 300000
 
 render: (output) ->
+  kalshiMap =
+    "CONTROLH":  "House winner"
+    "CONTROLS":  "Senate winner"
+    "SENATEAK":  "Alaska Senate"
+    "SENATEME":  "Maine Senate"
+    "SENATENC":  "North Carolina Senate"
+    "SENATEOHS": "Ohio Senate"
+    "SENATETX":  "Texas Senate"
+
   kalshi = {}
   for line in (output or "").trim().split("\n")
     if "=" not in line then continue
     [key, val] = line.split("=")
     demPct = Math.round(parseFloat(val) * 100)
-    if isNaN(demPct) then continue
-    if key is "CONTROLH"
-      kalshi["House winner"] = if demPct >= 50 then { name: "Democratic Party", party: "dem", pct: demPct } else { name: "Republican Party", party: "rep", pct: 100 - demPct }
-    if key is "CONTROLS"
-      kalshi["Senate winner"] = if demPct >= 50 then { name: "Democratic Party", party: "dem", pct: demPct } else { name: "Republican Party", party: "rep", pct: 100 - demPct }
-    if key is "SENATETX"
-      kalshi["Texas Senate"] = if demPct >= 50 then { name: "Democratic Party", party: "dem", pct: demPct } else { name: "Republican Party", party: "rep", pct: 100 - demPct }
+    if isNaN(demPct) or demPct is 0 then continue
+    label = kalshiMap[key]
+    if not label then continue
+    if demPct >= 50
+      kalshi[label] = { name: "Democratic Party", party: "dem", pct: demPct }
+    else
+      kalshi[label] = { name: "Republican Party", party: "rep", pct: 100 - demPct }
 
   window._kalshiRows = kalshi
 
@@ -35,12 +48,15 @@ render: (output) ->
   """
 
 afterRender: (domEl) ->
-  polySlugs = [
-    "which-party-will-win-the-house-in-2026"
-    "which-party-will-win-the-senate-in-2026"
-    "texas-senate-election-winner"
+  polyItems = [
+    { slug: "which-party-will-win-the-house-in-2026",  label: "House winner" }
+    { slug: "which-party-will-win-the-senate-in-2026", label: "Senate winner" }
+    { slug: "alaska-senate-election-winner",           label: "Alaska Senate" }
+    { slug: "maine-senate-election-winner",            label: "Maine Senate" }
+    { slug: "north-carolina-senate-election-winner",   label: "North Carolina Senate" }
+    { slug: "ohio-senate-election-winner",             label: "Ohio Senate" }
+    { slug: "texas-senate-election-winner",            label: "Texas Senate" }
   ]
-  labels = ["House winner", "Senate winner", "Texas Senate"]
 
   extractParty = (question) ->
     if /democratic party|democrats? win|democrats? control/i.test(question)
@@ -67,8 +83,8 @@ afterRender: (domEl) ->
     </div>
     """
 
-  promises = polySlugs.map((slug) ->
-    fetch("http://127.0.0.1:41417/gamma-api.polymarket.com/events?slug=#{slug}")
+  promises = polyItems.map((item) ->
+    fetch("http://127.0.0.1:41417/gamma-api.polymarket.com/events?slug=#{item.slug}")
       .then((r) -> r.json()).catch(-> [])
   )
 
@@ -79,42 +95,43 @@ afterRender: (domEl) ->
     html = ""
 
     for result, idx in results
+      label = polyItems[idx].label
+      chosen = null; chosenPct = null; chosenParty = null
+
       try
         events = if Array.isArray(result) then result else [result]
         event  = events[0]
-        if not event then continue
-        chosen = null; chosenPct = null; chosenParty = null
-        for m in (event.markets or [])
-          outcomes = if typeof m.outcomes is 'string' then JSON.parse(m.outcomes) else (m.outcomes or [])
-          prices   = if typeof m.outcomePrices is 'string' then JSON.parse(m.outcomePrices) else (m.outcomePrices or [])
-          isYesNo  = outcomes.every((o) -> /^(yes|no)$/i.test(o.trim()))
-          if isYesNo
-            yi = outcomes.findIndex((o) -> /^yes$/i.test(o.trim()))
-            if yi >= 0
-              yp = parseFloat(prices[yi] or 0)
-              p  = extractParty(m.question or "")
-              if p and yp > 0.5 and (not chosen or yp > chosenPct)
-                chosen = p.name; chosenPct = yp; chosenParty = p.party
-          else
-            lead = outcomes[0]; lp = parseFloat(prices[0] or 0)
-            for i in [1...outcomes.length]
-              v = parseFloat(prices[i] or 0)
-              if v > lp then lp = v; lead = outcomes[i]
-            isDem = /democrat|democratic/i.test(lead)
-            isRep = /republican/i.test(lead)
-            if isDem or isRep
-              chosen = lead; chosenPct = lp
-              chosenParty = if isDem then "dem" else "rep"
-              break
-
-        label = labels[idx]
-        kd    = kalshi[label]
-        if chosen
-          html += renderRow(label, chosen, chosenParty, Math.round(chosenPct * 100), "poly")
-        if kd
-          html += renderRow((if chosen then "" else label), kd.name, kd.party, kd.pct, "kalshi")
-        html += '<div class="pm-divider"></div>'
+        if event
+          for m in (event.markets or [])
+            outcomes = if typeof m.outcomes is 'string' then JSON.parse(m.outcomes) else (m.outcomes or [])
+            prices   = if typeof m.outcomePrices is 'string' then JSON.parse(m.outcomePrices) else (m.outcomePrices or [])
+            isYesNo  = outcomes.every((o) -> /^(yes|no)$/i.test(o.trim()))
+            if isYesNo
+              yi = outcomes.findIndex((o) -> /^yes$/i.test(o.trim()))
+              if yi >= 0
+                yp = parseFloat(prices[yi] or 0)
+                p  = extractParty(m.question or "")
+                if p and yp > 0.5 and (not chosen or yp > chosenPct)
+                  chosen = p.name; chosenPct = yp; chosenParty = p.party
+            else
+              lead = outcomes[0]; lp = parseFloat(prices[0] or 0)
+              for i in [1...outcomes.length]
+                v = parseFloat(prices[i] or 0)
+                if v > lp then lp = v; lead = outcomes[i]
+              isDem = /democrat|democratic/i.test(lead)
+              isRep = /republican/i.test(lead)
+              if isDem or isRep
+                chosen = lead; chosenPct = lp
+                chosenParty = if isDem then "dem" else "rep"
+                break
       catch e then continue
+
+      kd = kalshi[label]
+      if chosen
+        html += renderRow(label, chosen, chosenParty, Math.round(chosenPct * 100), "poly")
+      if kd
+        html += renderRow((if chosen then "" else label), kd.name, kd.party, kd.pct, "kalshi")
+      html += '<div class="pm-divider"></div>'
 
     container.innerHTML = if html then html else '<div class="pm-loading">No data</div>'
     now = new Date()
