@@ -2,7 +2,7 @@
 
 A macOS desktop widget that tracks live 2026 US midterm election odds from two prediction markets side by side.
 
-![2026 Midterms Widget](screenshot.png)
+![2026 Midterms Widget](screenshot1.png)
 
 ## What it tracks
 
